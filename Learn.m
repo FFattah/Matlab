@@ -1,133 +1,128 @@
-function [AvgBnft1,AvgBnft2,AvgPenalty1,AvgPenalty2,SecCons,SecBS]=Learn(Itratn ,SecCons, SecBS,Cons1,PrBS1 ,Cons2 ,PrBS2 ,IPoS,RBWS ,IncPric ,DecPric ,PPrice ,PReqBW ,SecReqBW ,SecMinPrice,MaxSpcNo ,M,OneorSec ,UBndwPChanel, N, Pt,Gt,Gr,ht,hr,Lb,Ub)
+function [AvgBnft1, AvgBnft2, AvgPenalty1, AvgPenalty2, SecCons, SecBS] = Learn( ...
+    Itratn, SecCons, SecBS, Cons1, PrBS1, Cons2, PrBS2, ...
+    IPoS, RBWS, IncPric, DecPric, PPrice, ...
+    PReqBW, SecReqBW, SecMinPrice, MaxSpcNo, M, OneorSec, ...
+    UBndwPChanel, N, Pt, Gt, Gr, ht, hr, Lb, Ub)
+% Learn - Adaptive pricing using probabilistic learning for spectrum allocation.
+%
+% This function uses a reinforcement learning method to adjust the spectrum prices
+% offered to secondary users in order to optimize the benefits of two primary
+% providers in a cognitive radio network.
+%
+% Inputs:
+%   Itratn          - Number of learning iterations for evaluation
+%   SecCons, SecBS  - Secondary consumers and base stations
+%   Cons1, PrBS1    - Primary consumers and BSs for provider 1
+%   Cons2, PrBS2    - Primary consumers and BSs for provider 2
+%   IPoS, RBWS      - Interference states and real bandwidth of secondaries
+%   IncPric         - Incremental price step for increasing prices
+%   DecPric         - Decremental step for lowering prices
+%   PPrice          - Primary user prices (upper limits)
+%   PReqBW          - Primary user requested bandwidth
+%   SecReqBW        - Secondary user requested bandwidth
+%   SecMinPrice     - Minimum acceptable price for secondary users
+%   MaxSpcNo        - Max number of channels a secondary user may access
+%   M               - Number of channels per provider
+%   OneorSec        - Flag for identifying user type
+%   UBndwPChanel    - Unit bandwidth per channel
+%   N, Pt, Gt, Gr   - Noise, transmission power, antenna gains
+%   ht, hr          - Transmit/receive antenna heights
+%   Lb, Ub          - Lower and upper satisfaction bounds (penalty thresholds)
+%
+% Outputs:
+%   AvgBnft1, AvgBnft2 - Benefit trends for both primary providers
+%   AvgPenalty1, AvgPenalty2 - Accumulated penalties from underservice
+%   SecCons, SecBS     - Updated secondary user and BS states
 
-    a=0.01;
-    b=0.01;
-    SPrc(2*M)=0;
-    % Initial Price of each Spectrum for Secondary consumers for both provider 1 and 2
-    for m=1:2*M
-%         SPrc(m)=randi([SecMinPrice(1),PPrice(1)]/10);
-%         SPrc(m)=((PPrice(1)/10)+(SecMinPrice(1)/10))/2;
-        SPrc(m)=(SecMinPrice(1)/10);
-    end
-    % Let Secondary consumers select spectrums base this initial price and
-    % calculate Total benefit of provider 1 & 2
-    [PureBnft1,PureBnft2,AvgPenalty1,AvgPenalty2,SecCons,SecBS]=Price(Itratn,SPrc, SecCons, SecBS,Cons1,PrBS1 ,Cons2 ,PrBS2 ,IPoS,RBWS ,PPrice ,PReqBW ,SecReqBW ,SecMinPrice,MaxSpcNo ,2*M,OneorSec ,UBndwPChanel, N, Pt,Gt,Gr,ht,hr,Lb,Ub);
+% -------------------------------------------------------------------------
+% Initialization
+a = 0.01; % Learning rate for success reinforcement
+b = 0.01; % Learning rate for penalty
 
-    Prob1(2*M)=0;
-    SumPrb1(2*M)=0;
-    Prob1(1)=1/(2*M+1);
-    SumPrb1(1)=Prob1(1);
-    for m=2:2*M
-        Prob1(m)=1/(2*M+1);
-        SumPrb1(m)=SumPrb1(m-1)+Prob1(m);
-    end
-    Prob2(2*M)=0;
-    SumPrb2(2*M)=0;
-    Prob2(1)=2/(2*M+1);
-    SumPrb2(1)=Prob2(1);
-    for m=2:2*M
-        Prob2(m)=1/(2*M+1);
-        SumPrb2(m)=SumPrb2(m-1)+Prob2(m);
-    end
-       
-    
-    %Optimization parameters
-    AvgBnft1(M)=0;
-    AvgBnft2(M)=0;
-    i=1;
-%     while(true)
-    while(i<1000)
-        % generate random number x1 to determine wich cell price should change
-        x1=rand();
-        % LearnCell1 will be the nearest index of SumPrb1 to x1 wich is from 1:2M
-        [val1,LearnCel1(i)]=min(abs(SumPrb1-x1));
-        if LearnCel1(i) <= M
-            if (SPrc(LearnCel1(i))+IncPric) < (PPrice(1)/10)
-                SPrc(LearnCel1(i))=SPrc(LearnCel1(i))+IncPric;
-            end
-        else
-            if (SPrc(LearnCel1(i)-M)-DecPric) > (SecMinPrice(1)/10)
-                SPrc(LearnCel1(i)-M)=SPrc(LearnCel1(i)-M)-DecPric;
-            end    
+SPrc = ones(1, 2*M) * (SecMinPrice(1) / 10); % Initial spectrum prices
+
+% Initial benefit and penalty calculations
+[PureBnft1, PureBnft2, AvgPenalty1, AvgPenalty2, SecCons, SecBS] = ...
+    Price(Itratn, SPrc, SecCons, SecBS, Cons1, PrBS1, Cons2, PrBS2, ...
+          IPoS, RBWS, PPrice, PReqBW, SecReqBW, SecMinPrice, MaxSpcNo, ...
+          2*M, OneorSec, UBndwPChanel, N, Pt, Gt, Gr, ht, hr, Lb, Ub);
+
+% -------------------------------------------------------------------------
+% Initialize probability distributions for spectrum learning
+Prob1 = ones(1, 2*M) / (2*M + 1);
+SumPrb1 = cumsum(Prob1);
+Prob2 = Prob1;  % Same start
+SumPrb2 = SumPrb1;
+
+% Benefit tracking
+AvgBnft1 = zeros(1, M);
+AvgBnft2 = zeros(1, M);
+
+i = 1;
+
+while i < 1000
+    % Select spectrum index for Provider 1 and adjust price
+    x1 = rand();
+    [~, LearnCel1(i)] = min(abs(SumPrb1 - x1));
+    if LearnCel1(i) <= M
+        if SPrc(LearnCel1(i)) + IncPric < PPrice(1)/10
+            SPrc(LearnCel1(i)) = SPrc(LearnCel1(i)) + IncPric;
         end
-        % LearnCel2 will be the nearest index of SumPrb2 to x2 wich is from 1:2M
-        x2=rand();
-        [val1,LearnCel2(i)]=min(abs(SumPrb2-x2));
-        if LearnCel2(i) <= M
-            if (SPrc(M+LearnCel2(i))+IncPric) < (PPrice(1)/10)
-                SPrc(M+LearnCel2(i))=SPrc(M+LearnCel2(i))+IncPric;
-            end
-        else
-            if (SPrc(LearnCel2(i))-DecPric) > (SecMinPrice(1)/10)
-                SPrc(LearnCel2(i))=SPrc(LearnCel2(i))-DecPric;
-            end    
+    else
+        idx = LearnCel1(i) - M;
+        if SPrc(idx) - DecPric > SecMinPrice(1)/10
+            SPrc(idx) = SPrc(idx) - DecPric;
         end
-       % Let Secondary consumers select spectrums base on change cell and
-       % calculate Total benefit of provider 1 & 2
-     
-        [AvgBnft1(LearnCel1(i)),AvgBnft2(LearnCel2(i)),AvgPenalty1,AvgPenalty2,SecCons,SecBS]=Price(Itratn,SPrc, SecCons, SecBS,Cons1,PrBS1 ,Cons2 ,PrBS2 ,IPoS,RBWS ,PPrice ,PReqBW ,SecReqBW ,SecMinPrice,MaxSpcNo ,2*M,OneorSec ,UBndwPChanel, N, Pt,Gt,Gr,ht,hr,Lb,Ub);
-
-        % AvgBnft1(LearnCel1) will save total benefit of Provider1 when
-        % LearnCel1 price is changed.
-        if  AvgBnft1(LearnCel1(i))>=PureBnft1
-            for m=1:2*M
-                if m==LearnCel1(i)
-                    Prob1(m)=Prob1(m)+a*(1-Prob1(m));
-                else
-                    Prob1(m)=(1-a)*Prob1(m);
-                end
-            end    
-        else
-             for m=1:2*M
-                if m==LearnCel1(i)
-                    if Prob1(m)-b*(1-Prob1(m))> 0
-                        Prob1(m)=Prob1(m)-b*(1-Prob1(m));
-                    end
-                else
-                    Prob1(m)=Prob1(m)*(1+b);
-                end
-            end    
-        end    
-        if  AvgBnft2(LearnCel2(i))>=PureBnft2
-            for m=1:2*M
-                if m==LearnCel2(i)
-                    Prob2(m)=Prob2(m)+a*(1-Prob2(m));
-                else
-                    Prob2(m)=(1-a)*Prob2(m);
-                end
-            end    
-        else
-             for m=1:2*M
-                if m==LearnCel2(i) 
-                    if Prob2(m)-b*(1-Prob2(m))> 0
-                        Prob2(m)=Prob2(m)-b*(1-Prob2(m));
-                    end
-                else
-                    Prob2(m)=Prob2(m)*(1+b);
-                end
-            end    
-        end  
-        % recalculate probability of selection of other spectrums base on
-        % selected spectrum LearnCel
-        for m=2:2*M
-            SumPrb1(m)=SumPrb1(m-1)+Prob1(m);
-            SumPrb2(m)=SumPrb2(m-1)+Prob2(m);
-        end
-        
-        %Graphs
-%         figure(1);
-%         plot(i, AvgBnft1(LearnCel1(i)),'b*',i, AvgBnft2(LearnCel2(i)),'r*')
-%         hold on
-%         
-%         figure(2);
-%         plot(i, sum(AvgPenalty1(:)),'b*',i, sum(AvgPenalty2(:)),'r*')
-%         hold on
-
-%         plot(i, AvgBnft1(LearnCel1(i)),'b*',i, AvgBnft2(LearnCel2(i)),'r*')
-%         hold on
-
-        i=i+1;        
     end
+
+    % Select spectrum index for Provider 2 and adjust price
+    x2 = rand();
+    [~, LearnCel2(i)] = min(abs(SumPrb2 - x2));
+    if LearnCel2(i) <= M
+        if SPrc(M + LearnCel2(i)) + IncPric < PPrice(1)/10
+            SPrc(M + LearnCel2(i)) = SPrc(M + LearnCel2(i)) + IncPric;
+        end
+    else
+        idx = LearnCel2(i);
+        if SPrc(idx) - DecPric > SecMinPrice(1)/10
+            SPrc(idx) = SPrc(idx) - DecPric;
+        end
+    end
+
+    % Re-evaluate pricing effects after update
+    [AvgBnft1(LearnCel1(i)), AvgBnft2(LearnCel2(i)), ...
+     AvgPenalty1, AvgPenalty2, SecCons, SecBS] = ...
+        Price(Itratn, SPrc, SecCons, SecBS, Cons1, PrBS1, Cons2, PrBS2, ...
+              IPoS, RBWS, PPrice, PReqBW, SecReqBW, SecMinPrice, MaxSpcNo, ...
+              2*M, OneorSec, UBndwPChanel, N, Pt, Gt, Gr, ht, hr, Lb, Ub);
+
+    % Reinforcement learning update for Provider 1
+    if AvgBnft1(LearnCel1(i)) >= PureBnft1
+        Prob1 = (1 - a) * Prob1;
+        Prob1(LearnCel1(i)) = Prob1(LearnCel1(i)) + a;
+    else
+        if Prob1(LearnCel1(i)) - b * (1 - Prob1(LearnCel1(i))) > 0
+            Prob1(LearnCel1(i)) = Prob1(LearnCel1(i)) - b * (1 - Prob1(LearnCel1(i)));
+        end
+        Prob1 = Prob1 .* (1 + b);
+    end
+
+    % Reinforcement learning update for Provider 2
+    if AvgBnft2(LearnCel2(i)) >= PureBnft2
+        Prob2 = (1 - a) * Prob2;
+        Prob2(LearnCel2(i)) = Prob2(LearnCel2(i)) + a;
+    else
+        if Prob2(LearnCel2(i)) - b * (1 - Prob2(LearnCel2(i))) > 0
+            Prob2(LearnCel2(i)) = Prob2(LearnCel2(i)) - b * (1 - Prob2(LearnCel2(i)));
+        end
+        Prob2 = Prob2 .* (1 + b);
+    end
+
+    % Normalize probability sums
+    SumPrb1 = cumsum(Prob1);
+    SumPrb2 = cumsum(Prob2);
+
+    i = i + 1;
 end
 
-
+end
