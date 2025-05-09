@@ -1,67 +1,59 @@
-% clc; 
-% close all;
-% clear all;
-%This subprogram is for pricing in cognitive radio
-%By Zahra Fattah
+function [I, RBW] = CalcIntrFrncSecOnSec(Cons, ConsBS, SecCons, ItfBS, M, S, UBndwPChanel, N, tag, Pt, Gt, Gr, ht, hr)
+% CalcIntrFrncSecOnSec - Calculates the interference caused by other secondary users 
+% on a specific secondary user, and computes the real bandwidth available.
+%
+% Inputs:
+%   Cons            - Target secondary user (struct with Index, CellNo, XLoc, YLoc)
+%   ConsBS          - Base stations serving secondary users (matrix of structs)
+%   SecCons         - Array of secondary user structures, each with a BS subfield
+%   ItfBS           - Interfering base stations (not used in this version)
+%   M               - Total number of spectrum channels (scalar)
+%   S               - Desired signal power received by the secondary user
+%   UBndwPChanel    - Unit bandwidth per channel (in MHz or similar)
+%   N               - Noise power
+%   tag             - Boolean flag to consider intra-cell interference (not used here)
+%   Pt, Gt, Gr      - Transmission power and antenna gains
+%   ht, hr          - Antenna heights for transmitter and receiver
+%
+% Outputs:
+%   I               - Interference vector (1 x M), storing total interference per spectrum
+%   RBW             - Real bandwidth available based on interference and SIR
+%
+% Author: Zahra Fattah
 
-% input parameters:
-% Cons              %Cons struct wich it's Interference shuould be calculated
-% Cons              %Bs of this consumer
-% ItfBS             % BS es that will couse Interference for given node
-% ItfRows,ItfCols   %number of rows and columns for ItfBS es
-% M                 % an array of Spectrum numbers wich User Cons uses them
-% I                 % Sum of interferences for each user in each spectrum of M
-% This function calculates Interference and available bandwidth for one consumer in it's different spectrums
+% Initialize interference vector and accumulated bandwidth
+I = zeros(1, M);
+RBW = 0;
 
-function [I,RBW]=CalcIntrFrncSecOnSec(Cons,ConsBS,SecCons, ItfBS,M,S,UBndwPChanel,N,tag, Pt,Gt,Gr,ht,hr)
-%     [ItfRows,ItfCols]=size(ItfBS);
-%     ConsSpeIndx=ConsBS(Cons.CellNo(1),Cons.CellNo(2)).Cons;                            
-%     SpecIndx=find(ConsSpeIndx==Cons.Index);                                       % spectrum Index that Cons uses them in his cell 
-%     SpecNo=ConsBS(Cons.CellNo(1),Cons.CellNo(2)).M(SpecIndx);                     % spectrum number that Cons uses them in his cell
-    
-    I(M)=0;
-    RBW=0;
-    SecConsNo=length(SecCons);
+% Coordinates of the target secondary user
+X1 = ConsBS(Cons.CellNo(1), Cons.CellNo(2)).X + Cons.XLoc;
+Y1 = ConsBS(Cons.CellNo(1), Cons.CellNo(2)).Y + Cons.YLoc;
 
-%     for i=1:ItfRows
-%         for j=1:ItfCols
-%             for m=1:M
-%                 tt=find(ItfBS(i,j).M==m) ; 
-%                 if (i~=Cons.CellNo(1) || j~=Cons.CellNo(2))|| tag
-%                     if ItfBS(i,j).Cons(tt)~=0 
-%                         X1 = ConsBS(Cons.CellNo(1),Cons.CellNo(2)).X + Cons.XLoc;   % X1 and Y1 are the location of consumer;
-%                         X2 = ItfBS(i,j).X;
-%                         Y1 = ConsBS(Cons.CellNo(1),Cons.CellNo(2)).Y + Cons.YLoc;   % X2 and Y2 are the location of Base Station that has interference with Consumer;
-%                         Y2 = ItfBS(i,j).Y;
-%                         d2BS = ((X2-X1)^2+(Y2-Y1)^2)^ 0.5;
-%                         PG_two_ray=Pt*Gt*Gr*ht^2*hr^2*(1./d2BS).^4;
-%                         I(m) = I(m) + PG_two_ray;                   % 'I' will save the Interferance in each spectrum in the first cluster
-%                     end
-%                end    
-%             end   
-%         end
-%     end
-    
-    
-    
-    for i=1: SecConsNo
-        for m=1:M
-            if SecCons(i).BS.Cons(m)==i 
-                X1 = ConsBS(Cons.CellNo(1),Cons.CellNo(2)).X + Cons.XLoc;   % X1 and Y1 are the location of consumer;
-                X2 = SecCons(i).BS.X;
-                Y1 = ConsBS(Cons.CellNo(1),Cons.CellNo(2)).Y + Cons.YLoc;   % X2 and Y2 are the location of Base Station that has interference with Consumer;
-                Y2 = SecCons(i).BS.Y;
-                d2BS = ((X2-X1)^2+(Y2-Y1)^2)^ 0.5;
-                PG_two_ray=Pt*Gt*Gr*ht^2*hr^2*(1./d2BS).^4;
-                I(m) = I(m) + PG_two_ray;                   % 'I' will save the Interferance in each spectrum in the first cluster
-            end
+% Loop over all secondary consumers
+for i = 1:length(SecCons)
+    for m = 1:M
+        % Check if the secondary user 'i' is using channel 'm'
+        if SecCons(i).BS.Cons(m) == i
+            % Get interfering BS coordinates
+            X2 = SecCons(i).BS.X;
+            Y2 = SecCons(i).BS.Y;
+
+            % Calculate distance between the current secondary user and the interferer
+            d2BS = sqrt((X2 - X1)^2 + (Y2 - Y1)^2);
+
+            % Compute interference power using the two-ray ground propagation model
+            PG_two_ray = Pt * Gt * Gr * ht^2 * hr^2 / (d2BS^4);
+
+            % Accumulate interference for channel m
+            I(m) = I(m) + PG_two_ray;
         end
     end
-    
-        
-        
-    for m=1:M
-        SIR = S/(I(m) + N);
-        RBW = RBW + UBndwPChanel * log(1 + SIR)/log(2);                             % Real bandwidth for each user in different spectrums         
-    end
+end
+
+% Calculate bandwidth using Shannon capacity formula for each channel
+for m = 1:M
+    SIR = S / (I(m) + N);  % Signal-to-Interference-plus-Noise Ratio
+    RBW = RBW + UBndwPChanel * log2(1 + SIR);  % Sum bandwidth across all channels
+end
+
 end
