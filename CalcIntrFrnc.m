@@ -1,45 +1,69 @@
-% clc; 
-% close all;
-% clear all;
-%This subprogram is for pricing in cognitive radio
-%By Zahra Fattah
+function [I, RBW] = CalcIntrFrnc(Cons, ConsBS, ItfBS, M, OneorSec, S, UBndwPChanel, N, tag, Pt, Gt, Gr, ht, hr)
+% CalcIntrFrnc - Calculates interference and available bandwidth for a consumer in a cognitive radio network.
+%
+% Inputs:
+%   Cons            - Consumer structure containing index, cell location, and local X/Y offset
+%   ConsBS          - Base station array assigned to each consumer
+%   ItfBS           - Interfering base stations (ItfRows x ItfCols struct array)
+%   M               - Array of spectrum indices used
+%   OneorSec        - Offset index for primary/secondary user lookup
+%   S               - Signal power from serving BS
+%   UBndwPChanel    - Unit bandwidth per channel
+%   N               - Noise power
+%   tag             - Boolean flag to consider intra-cell interference
+%   Pt, Gt, Gr      - Transmission power and antenna gains
+%   ht, hr          - Transmitter and receiver antenna heights
+%
+% Outputs:
+%   I               - Interference power per spectrum (indexed by spectrum number)
+%   RBW             - Real bandwidth achieved by the user across allocated spectrums
+%
+% Author: Zahra Fattah
 
-% input parameters:
-% Cons              %Cons struct wich it's Interference shuould be calculated
-% Cons              %Bs of this consumer
-% ItfBS             % BS es that will couse Interference for given node
-% ItfRows,ItfCols   %number of rows and columns for ItfBS es
-% M                 % an array of Spectrum numbers wich User Cons uses them
-% I                 % Sum of interferences for each user in each spectrum of M
-% This function calculates Interference and available bandwidth for one consumer in it's different spectrums
+% Get interfering grid dimensions
+[ItfRows, ItfCols] = size(ItfBS);
 
-function [I,RBW]=CalcIntrFrnc(Cons,ConsBS, ItfBS,M,OneorSec,S,UBndwPChanel,N,tag, Pt,Gt,Gr,ht,hr)
-    [ItfRows,ItfCols]=size(ItfBS);
-    ConsSpeIndx=ConsBS(Cons.CellNo(1),Cons.CellNo(2)).Cons;                            
-    SpecIndx=find(ConsSpeIndx==Cons.Index);                                       % spectrum Index that Cons uses them in his cell 
-    SpecNo=ConsBS(Cons.CellNo(1),Cons.CellNo(2)).M(SpecIndx);                     % spectrum number that Cons uses them in his cell
-    I(M)=0;
-    RBW=0;
-    for i=1:ItfRows
-        for j=1:ItfCols
-            for m=1:length(SpecNo)
-                tt=find(ItfBS(i,j).M==SpecNo(m)) ; 
-                if (i~=Cons.CellNo(1) || j~=Cons.CellNo(2))|| tag
-                    if ItfBS(i,j).Cons(tt+OneorSec)~=0 
-                        X1 = ConsBS(Cons.CellNo(1),Cons.CellNo(2)).X + Cons.XLoc;   % X1 and Y1 are the location of consumer;
-                        X2 = ItfBS(i,j).X;
-                        Y1 = ConsBS(Cons.CellNo(1),Cons.CellNo(2)).Y + Cons.YLoc;   % X2 and Y2 are the location of Base Station that has interference with Consumer;
-                        Y2 = ItfBS(i,j).Y;
-                        d2BS = ((X2-X1)^2+(Y2-Y1)^2)^ 0.5;
-                        PG_two_ray=Pt*Gt*Gr*ht^2*hr^2*(1./d2BS).^4;
-                        I(SpecNo(m)) = I(SpecNo(m)) + PG_two_ray;                   % 'I' will save the Interferance in each spectrum in the first cluster
-                    end
-               end    
-            end   
+% Identify which spectrum numbers this consumer is using
+ConsSpeIndx = ConsBS(Cons.CellNo(1), Cons.CellNo(2)).Cons;
+SpecIndx = find(ConsSpeIndx == Cons.Index);              % Consumer's spectrum index in the cell
+SpecNo = ConsBS(Cons.CellNo(1), Cons.CellNo(2)).M(SpecIndx);  % Spectrum numbers used
+
+% Initialize interference array and RBW accumulator
+I(M) = 0;
+RBW = 0;
+
+% Loop over interfering BSs
+for i = 1:ItfRows
+    for j = 1:ItfCols
+        for m = 1:length(SpecNo)
+            % Check if interfering BS uses same spectrum
+            tt = find(ItfBS(i, j).M == SpecNo(m));
+            
+            % Skip current BS unless tag = true (intra-cell interference allowed)
+            if (i ~= Cons.CellNo(1) || j ~= Cons.CellNo(2)) || tag
+                if ~isempty(tt) && ItfBS(i, j).Cons(tt + OneorSec) ~= 0
+                    % Calculate user and BS coordinates
+                    X1 = ConsBS(Cons.CellNo(1), Cons.CellNo(2)).X + Cons.XLoc;
+                    Y1 = ConsBS(Cons.CellNo(1), Cons.CellNo(2)).Y + Cons.YLoc;
+                    X2 = ItfBS(i, j).X;
+                    Y2 = ItfBS(i, j).Y;
+
+                    % Compute distance and interference power using two-ray ground model
+                    d2BS = sqrt((X2 - X1)^2 + (Y2 - Y1)^2);
+                    PG_two_ray = Pt * Gt * Gr * ht^2 * hr^2 / (d2BS^4);
+
+                    % Accumulate interference per spectrum
+                    I(SpecNo(m)) = I(SpecNo(m)) + PG_two_ray;
+                end
+            end
         end
     end
-    for m=1:length(SpecNo)
-        SIR = S/(I(SpecNo(m)) + N);
-        RBW = RBW + UBndwPChanel * log(1 + SIR)/log(2);                             % Real bandwidth for each user in different spectrums         
-    end
+end
+
+% Calculate effective bandwidth per spectrum using Shannon capacity formula
+for m = 1:length(SpecNo)
+    SIR = S / (I(SpecNo(m)) + N);
+    RBW = RBW + UBndwPChanel * log2(1 + SIR);  % Sum over usable spectrums
+end
+
 end
