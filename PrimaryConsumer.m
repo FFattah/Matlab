@@ -1,109 +1,113 @@
-% clc; 
-% close all;
-% clear all;
-%This subprogram presents a pricing method for cognitive radio
-%By Zahra Fattah
+function [Cons, PrBS] = PrimaryConsumer( ...
+    ReUsFct, Rows, Cols, Spectrm, M, OneorSec, ...
+    MaxConsPCell, ReqBW, PPrice, Radius, N, Pt, Gt, Gr, ht, hr, L)
+% PrimaryConsumer - Assigns and provisions primary users and spectrum in a CRN.
+%
+% Inputs:
+%   ReUsFct         - Frequency reuse factor
+%   Rows, Cols      - Grid size for cellular layout
+%   Spectrm         - Total spectrum (in Kbps)
+%   M               - Number of spectrum channels
+%   OneorSec        - Offset index for spectrum identification (0 = primary)
+%   MaxConsPCell    - Max primary users per cell
+%   ReqBW           - Array of required BW per user class
+%   PPrice          - Price levels per user class
+%   Radius          - Radius of hexagonal cell
+%   N, Pt, Gt, Gr   - Noise, transmit power, antenna gains
+%   ht, hr          - Antenna heights
+%   L               - Not used here
+%
+% Outputs:
+%   Cons            - Array of primary consumers
+%   PrBS            - Grid of base stations
+%
+% Author: Zahra Fattah
 
-% input parameters:
-% ReUsFct              %Reuse factor
-% Rows&Cols            %Rows*Cols will show number of cells
-% Spectrm              %totally Spectrum available for each Provider that should be devided per cells by MbPSec
-% M                    %Number of channels in each 3 cells
-% MaxConsPCell         %Spectrm*1000/BRReqPCons*ReUsFct;
-% ReqBW                %Requested Bandwidth for each class of primary Consumers by KbpSec
-% Radius               %Radius of each Cell
+% ----------------------------
+% Initial Setup
+UBndwPChanel = Spectrm * 1000 / M;          % Bandwidth per channel (bps)
+MaxPrConsNo = MaxConsPCell * Rows * Cols;   % Total primary users
+PrConsNo = MaxPrConsNo;
 
+% Initialize base stations
+PrBS = BS(Rows, Cols, Radius);
 
-function [Cons, PrBS]=PrimaryConsumer(ReUsFct,Rows,Cols,Spectrm,M,OneorSec,MaxConsPCell,ReqBW,PPrice,Radius, N, Pt,Gt,Gr,ht,hr,L)   
-     
-    UBndwPChanel=Spectrm*1000/M;            %evailable bandwidth in each channel without Interference and signal and Noise Power
-
-    MaxPrConsNo=MaxConsPCell*Rows*Cols;     %Maximumm number of all primary consumers
-%     PrConsNo=randi(MaxPrConsNo);            %number of primary consumers 
-    PrConsNo=MaxPrConsNo;                   %number of primary consumers 
-    
-    PrBS=BS(Rows,Cols,Radius);
-  
-    
-% Distribute M spectrums in ReUsFct(3) Cells:
-    for i=1: Rows
-        for j=1:Cols
-            for k=1:M/ReUsFct
-                    PrBS(i,j).M(k)=(M/ReUsFct)*(PrBS(i,j).RusCell-1)+k;     %currently unused spectrum;
-                    PrBS(i,j).Cons(k)=0;                                    %currently unused spectrum;
-            end
+% Assign M spectrum channels to 3 reuse groups
+for i = 1:Rows
+    for j = 1:Cols
+        for k = 1:M/ReUsFct
+            PrBS(i,j).M(k) = (M/ReUsFct) * (PrBS(i,j).RusCell - 1) + k;
+            PrBS(i,j).Cons(k) = 0;  % Unallocated spectrum index
         end
     end
-    
-% produce PrconsN Consumr and assign Cell, Class and distance of each Consumr 
-    Cons=struct;    
-    for i=1 : PrConsNo
-            Cons(i).Index=i;
-            Cons(i).class=randi(3);
-            x=randi(Rows);
-            y=randi(Cols);
-            Cons(i).BS=PrBS(x,y);               
-            Cons(i).CellNo=[x,y];          
-            Cons(i).XLoc=randi([-Radius,Radius],1);             %a random location for x position of user i
-            Cons(i).YLoc=randi([-Radius,Radius],1);             %a random location for y position of user i
-            Cons(i).BW=0;                                       %should be calculated. 
-            Cons(i).Price=PPrice(Cons(i).class);                                    %should be calculated.   
-    end
-    
-% assign requested spectrum to each Consumer
-    for i=1 : PrConsNo
-        while Cons(i).BW < ReqBW(Cons(i).class)
-            if length(find(PrBS(Cons(i).CellNo(1),Cons(i).CellNo(2)).Cons)) ~=  (M/ReUsFct)
-                x = randi (M/ReUsFct);
-%               if Cons(i).BS.Cons(x) == 0                                    % check if the cell number of randomly generated M is the same as consumer cell number and it isn't occupied:
-                if PrBS(Cons(i).CellNo(1),Cons(i).CellNo(2)).Cons(x) == 0       % check if the cell number of randomly generated M is the same as consumer cell number and it isn't occupied:
-                    Cons(i).BS.Cons(x) = i;                                         % allocate spectrum to this user
-                    PrBS(Cons(i).CellNo(1),Cons(i).CellNo(2)).Cons(x) = i;          % allocate spectrum to this Cell
-                    d2BS = ((Cons(i).XLoc)^2+(Cons(i).YLoc)^2)^ 0.5;
-                    S(i) = Pt*Gt*Gr*ht^2*hr^2*(1./d2BS).^4;                         % signal power for the consumer in this spectrum;
-                    SIR = S(i)/N;
-                    BndwPChanel(i) = UBndwPChanel * log(1 + SIR)/log(2);
-                    Cons(i).BW=Cons(i).BW + BndwPChanel(i);                         % sum up bandwidth of diferent spectrums allocated to user i with out calculating interferense
-                end
-            else
-                fprintf('not available bandwitdth');
-                break;
-            end    
+end
+
+% ----------------------------
+% Generate primary consumers
+Cons = struct;
+for i = 1:PrConsNo
+    Cons(i).Index = i;
+    Cons(i).class = randi(3);  % Random class 1,2,3
+    x = randi(Rows);
+    y = randi(Cols);
+    Cons(i).CellNo = [x, y];
+    Cons(i).BS = PrBS(x, y);
+    Cons(i).XLoc = randi([-Radius, Radius]);
+    Cons(i).YLoc = randi([-Radius, Radius]);
+    Cons(i).BW = 0;
+    Cons(i).Price = PPrice(Cons(i).class);
+end
+
+% ----------------------------
+% Allocate spectrum based on SNR and minimum BW
+for i = 1:PrConsNo
+    while Cons(i).BW < ReqBW(Cons(i).class)
+        cell = PrBS(Cons(i).CellNo(1), Cons(i).CellNo(2));
+        if length(find(cell.Cons)) < M / ReUsFct
+            x = randi(M / ReUsFct);
+            if cell.Cons(x) == 0
+                % Allocate channel
+                cell.Cons(x) = i;
+                Cons(i).BS.Cons(x) = i;
+                PrBS(Cons(i).CellNo(1), Cons(i).CellNo(2)).Cons(x) = i;
+
+                % Calculate SNR and bandwidth
+                d2BS = sqrt(Cons(i).XLoc^2 + Cons(i).YLoc^2);
+                S = Pt * Gt * Gr * ht^2 * hr^2 / d2BS^4;
+                SIR = S / N;
+                BW = UBndwPChanel * log2(1 + SIR);
+                Cons(i).BW = Cons(i).BW + BW;
+            end
+        else
+            fprintf('Not enough bandwidth in Cell (%d,%d)\n', x, y);
+            break;
         end
     end
-    
-    
+end
 
-% calculating Interferences for each consumer and increase avaliable bandwidth if needed
-    tag=0;
-    for k=1 : PrConsNo
-        [I(k,:),RBW(k)]=CalcIntrFrnc(Cons(k),PrBS, PrBS,M,OneorSec,S(k),UBndwPChanel,N,tag, Pt,Gt,Gr,ht,hr); %
-        Cons(k).BW=RBW(k);
-        while Cons(k).BW < ReqBW(Cons(k).class)
-            if length(find(PrBS(Cons(k).CellNo(1),Cons(k).CellNo(2)).Cons)) ~=  (M/ReUsFct)
-                x = randi (M/ReUsFct);
-                if PrBS(Cons(k).CellNo(1),Cons(k).CellNo(2)).Cons(x) == 0   % check if the cell number of randomly generated M is the same as consumer cell number and it isn't occupied:
-                    PrBS(Cons(k).CellNo(1),Cons(k).CellNo(2)).Cons(x) = k;  % allocate thi spectrum to this user
-                    Cons(k).BS.Cons(x) = k;                                 % allocate spectrum to this user
-                    Cons(k).BW=Cons(k).BW + BndwPChanel(k);
-                end
-            else
-                fprintf('not available bandwitdth\n');
-                break;
+% ----------------------------
+% Adjust BW with Interference Consideration
+for k = 1:PrConsNo
+    tag = 0; % intra-cell interference ignored
+    [~, RBW(k)] = CalcIntrFrnc(Cons(k), PrBS, PrBS, M, OneorSec, S, UBndwPChanel, N, tag, Pt, Gt, Gr, ht, hr);
+    Cons(k).BW = RBW(k);
+
+    % Allocate additional channels if needed
+    while Cons(k).BW < ReqBW(Cons(k).class)
+        cell = PrBS(Cons(k).CellNo(1), Cons(k).CellNo(2));
+        if length(find(cell.Cons)) < M / ReUsFct
+            x = randi(M / ReUsFct);
+            if cell.Cons(x) == 0
+                cell.Cons(x) = k;
+                Cons(k).BS.Cons(x) = k;
+                PrBS(Cons(k).CellNo(1), Cons(k).CellNo(2)).Cons(x) = k;
+                Cons(k).BW = Cons(k).BW + UBndwPChanel;
             end
-        end    
+        else
+            fprintf('No available bandwidth for user %d\n', k);
+            break;
+        end
     end
-    bb=1;
+end
 
-
-
-    
-    
-    
-
-    
- 
- 
-    
-    
-    
+end
